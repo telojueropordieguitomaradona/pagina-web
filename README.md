@@ -233,18 +233,8 @@ Las tablas **`vacuna`** y **`desparasitacion`** no tienen existencia independien
  
 ---
  
-## 4. Diccionario de Datos y Justificación de Tipos
- 
-El script SQL actual emplea tres tipos de datos primitivos. A continuación se documenta la justificación técnica de cada uno tal como aparece en el esquema físico, así como las **limitaciones observadas** que representan oportunidades de mejora futura.
- 
-| Tipo de Dato | Columnas donde se usa | Justificación técnica | Limitación identificada |
-|---|---|---|---|
-| **`INT`** | Todas las PKs (`id_empleado`, `id_mascota`, `id_cita`, etc.), `monto`, `telefono` (en `tutor`) y `rfc` (en `empleado`) | Tipo entero estándar de 4 bytes (rango hasta ~2,100 millones). Apropiado para identificadores numéricos autoincrementales y montos enteros de transacciones. | `monto` debería ser `NUMERIC(10,2)` para soportar centavos. `telefono` y `rfc` son campos alfanuméricos en la práctica y deberían declararse como `VARCHAR` o `CHAR` con longitud fija, no como `INT`. |
-| **`VARCHAR`** | `nombre`, `telefono` (en `empleado`), `cedula_profesional`, `especialidad`, `correo_electronico`, `direccion`, `especie`, `sexo`, `tipo`, `motivo` y otros campos de texto | Cadena de longitud variable. Evita reservar espacio fijo innecesario para campos cuya longitud real varía por registro. | Ninguna columna `VARCHAR` del esquema actual especifica longitud máxima (ej. `VARCHAR` en lugar de `VARCHAR(100)`). Esto omite una capa de validación de negocio y puede generar entradas de tamaño ilimitado. Se recomienda acotar cada campo según su dominio real. |
-| **`DATE`** | `fecha` (en `cita`), `fecha_de_registo` (en `tutor`), `fecha_aplicacion` y `proxima_dosis` (en `vacuna` y `desparasitacion`) | Almacena fechas de calendario (año, mes, día) sin componente horario. Adecuado para eventos de un día completo: registro de tutores, aplicación de vacunas y fechas de próxima dosis. | Ninguna. El uso de `DATE` es correcto para todos los campos donde se aplica. |
-| **`TIME`** | `hora` (en `cita`) | Almacena la hora del día con precisión de horas y minutos. Permite registrar bloques de atención en la agenda sin almacenar información de fecha redundante (ya cubierta por `DATE` en la misma tabla). | Ninguna. El uso de `TIME` es correcto y eficiente para este campo. |
- 
----
+### 3.5 Diagrama Relacional
 
+<img src="https://raw.githubusercontent.com/ctlu-l/pagina-web/main/relacional.png" alt="Diagrama EER" loading="lazy">
 
 
