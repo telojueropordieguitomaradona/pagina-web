@@ -183,4 +183,4 @@ Las tablas **`tiene`** y **`agenda`** no almacenan atributos propios más allá 
 
 ### 3.5 Diagrama EER
 
-<img src="https://raw.github.com/ctlu-l/pagina-web/blob/main/EER.drawio.png" alt="Diagrama EER del sistema Los Consentidos" loading="lazy">
+<img src="https://raw.githubusercontent.com/ctlu-l/pagina-web/main/EER.drawio.png" alt="Diagrama EER" loading="lazy">
