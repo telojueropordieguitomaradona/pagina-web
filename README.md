@@ -1,27 +1,32 @@
-# Documentación Técnica
-
-## Índice
-
-1. [Introducción](#1-introducción)
-2. [Planteamiento del Problema](#2-planteamiento-del-problema)
-   - [2.1 Descripción de la Problemática](#21-descripción-de-la-problemática)
-   - [2.2 Levantamiento de Requerimientos](#22-levantamiento-de-requerimientos)
-3. [Diseño Conceptual](#3-diseño-conceptual)
-   - [3.1 Identificación de Entidades](#31-identificación-de-entidades)
-   - [3.2 Relaciones y Cardinalidades](#32-relaciones-y-cardinalidades)
-   - [3.3 Jerarquía ISA](#33-jerarquía-isa)
-   - [3.4 Entidades Débiles](#34-entidades-débiles)
-
-   # 🐾 Veterinaria Patitas Sanas — Documentación de Base de Datos
+# 🐾 Veterinaria Patitas Sanas — Documentación de Base de Datos
 
 > Sistema de Gestión Clínica Veterinaria · Versión 1.0  
 > Única sucursal: Colonia Emiliano Zapata, Los Reyes La Paz
 
 ---
 
+## Índice
+
+1. [Introducción y Planteamiento del Problema](#1-introducción-y-planteamiento-del-problema)
+   - [1.1 Descripción de la Problemática](#11-descripción-de-la-problemática)
+   - [1.2 Levantamiento de Requerimientos](#12-levantamiento-de-requerimientos)
+2. [Diseño Conceptual y Arquitectura de Datos](#2-diseño-conceptual-y-arquitectura-de-datos)
+   - [2.1 Identificación de Entidades](#21-identificación-de-entidades)
+   - [2.2 Relaciones y Cardinalidades](#22-relaciones-y-cardinalidades)
+   - [2.3 Jerarquía ISA](#23-jerarquía-isa-especialización--generalización)
+   - [2.4 Entidades Débiles y Dependencias](#24-entidades-débiles-y-dependencias)
+   - [2.5 Diagrama EER](#25-diagrama-eer)
+3. [Modelo Relacional](#3-modelo-relacional)
+   - [3.1 Estrategia de Transformación](#31-estrategia-de-transformación)
+   - [3.2 Tablas Resultantes del Esquema Relacional](#32-tablas-resultantes-del-esquema-relacional)
+   - [3.3 Diagrama Relacional](#33-diagrama-relacional)
+4. [Stack Tecnológico](#4-stack-tecnológico)
+
+---
+
 ## 1. Introducción y Planteamiento del Problema
 
-Este documento presenta la documentación técnica del sistema de gestión veterinaria patitas sanas, desarrollado como proyecto final para la materia de Bases de Datos por el equipo del Grupo XX.
+Este documento presenta la documentación técnica del sistema de gestión veterinaria Patitas Sanas, desarrollado como proyecto final para la materia de Bases de Datos.
 
 ### 1.1 Descripción de la Problemática
 
@@ -181,42 +186,48 @@ Las tablas **`tiene`** y **`agenda`** no almacenan atributos propios más allá 
 - **`tiene`**: PK compuesta (`id_cliente`, `id_mascota`), resuelve la relación N:M entre `tutor` y `mascota`.
 - **`agenda`**: PK compuesta ternaria (`id_cita`, `id_empleado`, `id_cliente`), resuelve la relación ternaria entre `cita`, `recepcionista` y `tutor`.
 
-### 3.5 Diagrama EER
+---
+
+### 2.5 Diagrama EER
 
 <img src="https://raw.githubusercontent.com/ctlu-l/pagina-web/main/EER.drawio.png" alt="Diagrama EER" loading="lazy">
 
+---
+
 ## 3. Modelo Relacional
- 
+
 ### 3.1 Estrategia de Transformación
- 
+
 La conversión del modelo conceptual (E-R) al modelo relacional físico siguió cuatro reglas de transformación principales, aplicadas de forma explícita en el script SQL:
- 
+
 **Jerarquía ISA — Tabla por subtipo**
- 
+
 La especialización del personal se resolvió con el patrón *tabla por subtipo*: la tabla **`empleado`** centraliza los atributos compartidos (`id_empleado`, `nombre`, `telefono`, `rfc`) y actúa como supertipo. Cada subtipo genera su propia tabla con atributos exclusivos:
- 
+
 - **`veterinario`** hereda `id_empleado` como PK y FK simultánea, añadiendo `cedula_profesional` y `especialidad`.
 - **`recepcionista`** referencia `id_empleado` como FK con restricción `UNIQUE NOT NULL`, pero declara `id_caja` como su propia PK, reflejando una identidad administrativa independiente vinculada a la caja de cobro.
+
 Todas las FK de la jerarquía se declaran `DEFERRABLE INITIALLY IMMEDIATE`, lo que permite diferir la validación referencial dentro de una transacción para insertar primero en `empleado` y luego en el subtipo correspondiente, sin violar la integridad en ningún punto intermedio de la operación.
- 
+
 **Relaciones N:M — Tablas asociativas**
- 
+
 Las relaciones de muchos a muchos se materializaron mediante tablas puente con PK compuesta:
- 
+
 - **`tiene`** (`id_cliente`, `id_mascota`) resuelve la relación binaria N:M entre `tutor` y `mascota`. Su PK compuesta garantiza que una misma pareja tutor-mascota no se registre de forma duplicada.
 - **`agenda`** (`id_cita`, `id_empleado`, `id_cliente`) resuelve una relación **ternaria** que vincula simultáneamente a `cita`, `recepcionista` y `tutor`. La PK de tres columnas impide que una misma combinación de cita, recepcionista y cliente se agende más de una vez.
+
 **Relación 1:1 entre `cita` y `servicio`**
- 
+
 La relación uno a uno entre el evento logístico (`cita`) y el acto médico (`servicio`) se implementó propagando `id_cita` hacia `servicio` con la restricción `UNIQUE`. Esto garantiza que cada cita genera **a lo sumo un** registro de servicio: si la columna fuera solo FK sin `UNIQUE`, la cardinalidad permitiría múltiples servicios por cita, lo que violaría la semántica del modelo. La restricción `UNIQUE` es el mecanismo relacional que hace cumplir el máximo de 1.
- 
+
 **Entidades débiles — `vacuna` y `desparasitacion`**
- 
+
 Las tablas **`vacuna`** y **`desparasitacion`** no tienen existencia independiente: ambas incluyen `id_mascota` como FK obligatoria hacia `mascota`. Sus propias PK (`id_vacuna`, `id_desparasitacion`) son enteros autónomos, pero el ciclo de vida de cada registro queda ligado al de la mascota referenciada. La dependencia se implementa físicamente mediante `ALTER TABLE ... ADD FOREIGN KEY (id_mascota) REFERENCES mascota(id_mascota) DEFERRABLE INITIALLY IMMEDIATE`.
- 
+
 ---
- 
+
 ### 3.2 Tablas Resultantes del Esquema Relacional
- 
+
 | Tabla | Tipo | Descripción |
 |---|---|---|
 | **`empleado`** | Fuerte / Supertipo | Raíz de la jerarquía de personal. Almacena los atributos comunes a todo el personal de la clínica: `id_empleado` (PK), `nombre`, `telefono` y `rfc`. |
@@ -230,11 +241,28 @@ Las tablas **`vacuna`** y **`desparasitacion`** no tienen existencia independien
 | **`mascota`** | Fuerte | Entidad central del sistema clínico (el paciente). Almacena `nombre`, `especie` (CHECK), `sexo`, `edad` y `id_uk_carnet` (UNIQUE). |
 | **`vacuna`** | Débil por existencia | Historial de vacunación por mascota. Depende de `mascota` vía FK `id_mascota`. Registra `tipo`, `fecha_aplicacion` y `proxima_dosis`. |
 | **`desparasitacion`** | Débil por existencia | Historial de desparasitaciones por mascota. Depende de `mascota` vía FK `id_mascota`. Registra únicamente `fecha_aplicacion` en el esquema actual. |
- 
+
 ---
- 
-### 3.5 Diagrama Relacional
 
-<img src="https://raw.githubusercontent.com/ctlu-l/pagina-web/main/relacional.png" alt="Diagrama EER" loading="lazy">
+### 3.3 Diagrama Relacional
 
+<img src="https://raw.githubusercontent.com/ctlu-l/pagina-web/main/relacional.png" alt="Diagrama Relacional" loading="lazy">
 
+---
+
+## 4. Stack Tecnológico
+
+La interfaz web fue construida con un enfoque en la usabilidad y la presentación clara de la información, con un diseño responsivo que se adapta a dispositivos móviles y de escritorio.
+
+**Tecnologías principales**
+
+- **Frontend — React**: La interfaz se desarrolló con React, aprovechando su arquitectura basada en componentes para estructurar las vistas de forma modular y reutilizable.
+- **Backend — Node.js**: Se utilizó Node.js para la lógica del servidor y la gestión de dependencias del proyecto.
+- **Base de datos — Supabase**: Se eligió Supabase como backend como servicio (BaaS) por proporcionar una base de datos PostgreSQL gestionada con API RESTful automática, lo que simplifica las operaciones CRUD desde el cliente. Incluye además Row Level Security y una capa gratuita adecuada para proyectos académicos y prototipos.
+
+**Despliegue**
+
+- **GitHub Pages**: Hospedaje del sitio estático del frontend.
+- **Vercel**: Plataforma de despliegue continuo integrada con el repositorio, utilizada para previsualización y producción.
+
+---
