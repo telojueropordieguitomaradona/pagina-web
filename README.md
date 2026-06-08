@@ -184,3 +184,67 @@ Las tablas **`tiene`** y **`agenda`** no almacenan atributos propios más allá 
 ### 3.5 Diagrama EER
 
 <img src="https://raw.githubusercontent.com/ctlu-l/pagina-web/main/EER.drawio.png" alt="Diagrama EER" loading="lazy">
+
+## 3. Modelo Relacional
+ 
+### 3.1 Estrategia de Transformación
+ 
+La conversión del modelo conceptual (E-R) al modelo relacional físico siguió cuatro reglas de transformación principales, aplicadas de forma explícita en el script SQL:
+ 
+**Jerarquía ISA — Tabla por subtipo**
+ 
+La especialización del personal se resolvió con el patrón *tabla por subtipo*: la tabla **`empleado`** centraliza los atributos compartidos (`id_empleado`, `nombre`, `telefono`, `rfc`) y actúa como supertipo. Cada subtipo genera su propia tabla con atributos exclusivos:
+ 
+- **`veterinario`** hereda `id_empleado` como PK y FK simultánea, añadiendo `cedula_profesional` y `especialidad`.
+- **`recepcionista`** referencia `id_empleado` como FK con restricción `UNIQUE NOT NULL`, pero declara `id_caja` como su propia PK, reflejando una identidad administrativa independiente vinculada a la caja de cobro.
+Todas las FK de la jerarquía se declaran `DEFERRABLE INITIALLY IMMEDIATE`, lo que permite diferir la validación referencial dentro de una transacción para insertar primero en `empleado` y luego en el subtipo correspondiente, sin violar la integridad en ningún punto intermedio de la operación.
+ 
+**Relaciones N:M — Tablas asociativas**
+ 
+Las relaciones de muchos a muchos se materializaron mediante tablas puente con PK compuesta:
+ 
+- **`tiene`** (`id_cliente`, `id_mascota`) resuelve la relación binaria N:M entre `tutor` y `mascota`. Su PK compuesta garantiza que una misma pareja tutor-mascota no se registre de forma duplicada.
+- **`agenda`** (`id_cita`, `id_empleado`, `id_cliente`) resuelve una relación **ternaria** que vincula simultáneamente a `cita`, `recepcionista` y `tutor`. La PK de tres columnas impide que una misma combinación de cita, recepcionista y cliente se agende más de una vez.
+**Relación 1:1 entre `cita` y `servicio`**
+ 
+La relación uno a uno entre el evento logístico (`cita`) y el acto médico (`servicio`) se implementó propagando `id_cita` hacia `servicio` con la restricción `UNIQUE`. Esto garantiza que cada cita genera **a lo sumo un** registro de servicio: si la columna fuera solo FK sin `UNIQUE`, la cardinalidad permitiría múltiples servicios por cita, lo que violaría la semántica del modelo. La restricción `UNIQUE` es el mecanismo relacional que hace cumplir el máximo de 1.
+ 
+**Entidades débiles — `vacuna` y `desparasitacion`**
+ 
+Las tablas **`vacuna`** y **`desparasitacion`** no tienen existencia independiente: ambas incluyen `id_mascota` como FK obligatoria hacia `mascota`. Sus propias PK (`id_vacuna`, `id_desparasitacion`) son enteros autónomos, pero el ciclo de vida de cada registro queda ligado al de la mascota referenciada. La dependencia se implementa físicamente mediante `ALTER TABLE ... ADD FOREIGN KEY (id_mascota) REFERENCES mascota(id_mascota) DEFERRABLE INITIALLY IMMEDIATE`.
+ 
+---
+ 
+### 3.2 Tablas Resultantes del Esquema Relacional
+ 
+| Tabla | Tipo | Descripción |
+|---|---|---|
+| **`empleado`** | Fuerte / Supertipo | Raíz de la jerarquía de personal. Almacena los atributos comunes a todo el personal de la clínica: `id_empleado` (PK), `nombre`, `telefono` y `rfc`. |
+| **`veterinario`** | Débil por identidad / Subtipo | Especialización médica de `empleado`. Su PK `id_empleado` es heredada como FK desde `empleado`. Extiende el perfil con `cedula_profesional` y `especialidad`. |
+| **`recepcionista`** | Débil por identidad / Subtipo | Especialización administrativa de `empleado`. Declara `id_caja` como PK propia y referencia `id_empleado` (UNIQUE NOT NULL) como FK hacia `empleado`. |
+| **`cita`** | Fuerte / Transaccional | Registra el encuentro entre el paciente y el veterinario. Contiene `fecha`, `hora`, `monto`, FK hacia `veterinario` y `id_uk_transaccion` (UNIQUE) para trazabilidad de pagos futuros. |
+| **`servicio`** | Débil por existencia / Extensión 1:1 | Materializa el acto médico derivado de una cita. `id_cita` es FK con restricción UNIQUE (garantiza cardinalidad 1:1). Registra el `tipo` de procedimiento (CHECK) y el `motivo`. |
+| **`agenda`** | Asociativa / Ternaria N:M | Tabla puente ternaria que vincula `cita`, `recepcionista` y `tutor`. PK compuesta de tres columnas: (`id_cita`, `id_empleado`, `id_cliente`). |
+| **`tutor`** | Fuerte | Entidad independiente que representa al responsable legal de las mascotas. Almacena `nombre`, `direccion`, `correo_electronico`, `telefono` y `fecha_de_registo`. |
+| **`tiene`** | Asociativa N:M | Tabla puente binaria entre `tutor` y `mascota`. PK compuesta (`id_cliente`, `id_mascota`) formaliza la relación de tutela. |
+| **`mascota`** | Fuerte | Entidad central del sistema clínico (el paciente). Almacena `nombre`, `especie` (CHECK), `sexo`, `edad` y `id_uk_carnet` (UNIQUE). |
+| **`vacuna`** | Débil por existencia | Historial de vacunación por mascota. Depende de `mascota` vía FK `id_mascota`. Registra `tipo`, `fecha_aplicacion` y `proxima_dosis`. |
+| **`desparasitacion`** | Débil por existencia | Historial de desparasitaciones por mascota. Depende de `mascota` vía FK `id_mascota`. Registra únicamente `fecha_aplicacion` en el esquema actual. |
+ 
+---
+ 
+## 4. Diccionario de Datos y Justificación de Tipos
+ 
+El script SQL actual emplea tres tipos de datos primitivos. A continuación se documenta la justificación técnica de cada uno tal como aparece en el esquema físico, así como las **limitaciones observadas** que representan oportunidades de mejora futura.
+ 
+| Tipo de Dato | Columnas donde se usa | Justificación técnica | Limitación identificada |
+|---|---|---|---|
+| **`INT`** | Todas las PKs (`id_empleado`, `id_mascota`, `id_cita`, etc.), `monto`, `telefono` (en `tutor`) y `rfc` (en `empleado`) | Tipo entero estándar de 4 bytes (rango hasta ~2,100 millones). Apropiado para identificadores numéricos autoincrementales y montos enteros de transacciones. | `monto` debería ser `NUMERIC(10,2)` para soportar centavos. `telefono` y `rfc` son campos alfanuméricos en la práctica y deberían declararse como `VARCHAR` o `CHAR` con longitud fija, no como `INT`. |
+| **`VARCHAR`** | `nombre`, `telefono` (en `empleado`), `cedula_profesional`, `especialidad`, `correo_electronico`, `direccion`, `especie`, `sexo`, `tipo`, `motivo` y otros campos de texto | Cadena de longitud variable. Evita reservar espacio fijo innecesario para campos cuya longitud real varía por registro. | Ninguna columna `VARCHAR` del esquema actual especifica longitud máxima (ej. `VARCHAR` en lugar de `VARCHAR(100)`). Esto omite una capa de validación de negocio y puede generar entradas de tamaño ilimitado. Se recomienda acotar cada campo según su dominio real. |
+| **`DATE`** | `fecha` (en `cita`), `fecha_de_registo` (en `tutor`), `fecha_aplicacion` y `proxima_dosis` (en `vacuna` y `desparasitacion`) | Almacena fechas de calendario (año, mes, día) sin componente horario. Adecuado para eventos de un día completo: registro de tutores, aplicación de vacunas y fechas de próxima dosis. | Ninguna. El uso de `DATE` es correcto para todos los campos donde se aplica. |
+| **`TIME`** | `hora` (en `cita`) | Almacena la hora del día con precisión de horas y minutos. Permite registrar bloques de atención en la agenda sin almacenar información de fecha redundante (ya cubierta por `DATE` en la misma tabla). | Ninguna. El uso de `TIME` es correcto y eficiente para este campo. |
+ 
+---
+
+
+
